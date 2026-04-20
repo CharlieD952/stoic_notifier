@@ -1,0 +1,60 @@
+name: Stoic Daily Notifier
+
+on:
+  schedule:
+    # All times in UTC. South Africa is UTC+2.
+    # Morning: 05:00 SAST = 03:00 UTC
+    - cron: "0 3 * * *"
+    # Midday: 13:30 SAST = 11:30 UTC
+    - cron: "30 11 * * *"
+    # Evening: 22:00 SAST = 20:00 UTC
+    - cron: "0 20 * * *"
+
+  # Allow manual trigger from GitHub Actions UI (great for testing)
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "Which slot to send (morning | midday | evening)"
+        required: true
+        default: "morning"
+
+jobs:
+  send-notification:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine slot from schedule
+        id: slot
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SLOT=${{ github.event.inputs.slot }}" >> $GITHUB_ENV
+          else
+            HOUR=$(date -u +"%H")
+            MINUTE=$(date -u +"%M")
+            if [ "$HOUR" = "03" ]; then
+              echo "SLOT=morning" >> $GITHUB_ENV
+            elif [ "$HOUR" = "11" ]; then
+              echo "SLOT=midday" >> $GITHUB_ENV
+            else
+              echo "SLOT=evening" >> $GITHUB_ENV
+            fi
+          fi
+
+      - name: Send Stoic notification
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          SLOT: ${{ env.SLOT }}
+        run: python notifier.py
